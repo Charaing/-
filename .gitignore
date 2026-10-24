@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-single
+build
+Payload
+*.ipa
+xcodebuild.log
+tsconfig.tsbuildinfo

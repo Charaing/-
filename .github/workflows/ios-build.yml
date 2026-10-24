@@ -1,0 +1,70 @@
+name: iOS IPA 빌드
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Node.js 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 단위 테스트
+        run: npm test
+
+      - name: 웹 빌드
+        run: npm run build
+
+      - name: iOS 프로젝트 동기화 (pod install 포함)
+        run: npx cap sync ios
+
+      - name: Xcode 빌드 (서명 없이)
+        run: |
+          set -o pipefail
+          xcodebuild -version
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*CoachEngine|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Release-iphoneos/App.app
+
+      - name: 빌드 로그 보관 (실패 시 확인용)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
+
+      - name: IPA 만들기
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry BoxingVoiceCoach-v1.ipa Payload
+          ls -la BoxingVoiceCoach-v1.ipa
+
+      - name: IPA 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoxingVoiceCoach-ipa
+          path: BoxingVoiceCoach-v1.ipa
